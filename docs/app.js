@@ -394,6 +394,6 @@ show({ name: 'shelf', args: {} });
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js').then(r => { document.addEventListener('visibilitychange', () => { if (!document.hidden) r.update(); }); });
-  let reloaded = false;
+  let reloaded = !navigator.serviceWorker.controller; // はじめて入れた時は読みこみ直さない(更新の時だけ)
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (reloaded || dirty || (cur && cur.name !== 'shelf' && cur.name !== 'book')) return; reloaded = true; location.reload(); });
 }

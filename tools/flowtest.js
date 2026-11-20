@@ -17,7 +17,7 @@ const SIZES = [['se2', 375, 553], ['sense9', 412, 760], ['big', 430, 740]];
     const p = await ctx.newPage();
     p.on('pageerror', e => errs.push(nm + ': ' + e.message));
     p.on('console', m => { if (m.type() === 'error') errs.push(nm + ' console: ' + m.text()); });
-    await p.goto('http://localhost:8137/');
+    await p.goto('' + (process.env.URL || 'http://localhost:8137/') + '');
     await p.waitForSelector('.book[data-id]');
     const shot = async t => { await p.waitForTimeout(250); await p.screenshot({ path: path.join(OUT, `${nm}-${t}.png`) }); };
     const fits = async t => { const r = await p.evaluate(() => { const o = []; document.querySelectorAll('.foot,.hd,.tools,.stage').forEach(e => { const b = e.getBoundingClientRect(); o.push([e.className, Math.round(b.top), Math.round(b.bottom)]); }); return { h: innerHeight, sh: document.documentElement.scrollHeight, o }; }); const bad = r.o.filter(x => x[2] > r.h + 1); if (bad.length || r.sh > r.h + 1) errs.push(`${nm} ${t}: はみ出し ${JSON.stringify(r)}`); return r; };
