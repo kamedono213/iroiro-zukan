@@ -2,7 +2,7 @@
 // 写真はこのスマホの中(IndexedDB)だけに保存する。どこにも送らない。
 'use strict';
 
-const VERSION = '1.1';
+const VERSION = '1.2';
 const app = document.getElementById('app');
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -77,7 +77,10 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 // ---------- 画像
 function loadImg(src) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; }); }
 const blobURL = new Map();
-function urlOf(item) { if (!blobURL.has(item.id)) blobURL.set(item.id, URL.createObjectURL(item.orig)); return blobURL.get(item.id); }
+// 写真は ArrayBuffer でしまう(iPhone の Safari などは Blob をそのまま IndexedDB にしまえないことがある)
+const packImg = async blob => ({ buf: await blob.arrayBuffer(), type: blob.type || 'image/jpeg' });
+const imgBlob = o => o instanceof Blob ? o : new Blob([o.buf], { type: o.type || 'image/jpeg' });
+function urlOf(item) { if (!blobURL.has(item.id)) blobURL.set(item.id, URL.createObjectURL(imgBlob(item.orig))); return blobURL.get(item.id); }
 // 写真を長いほう 1200px までに小さくして JPEG にする
 async function shrink(file) {
   const u = URL.createObjectURL(file);
@@ -122,16 +125,23 @@ function go(name, args = {}, replace = false) {
   if (replace) history.replaceState(st, ''); else history.pushState(st, '');
   show(st);
 }
-function show(st) { cur = st; dirty = false; window.onresize = null; const c = $('#cover'); if (c) c.remove(); screens[st.name](st.args || {}); }
-function back() { history.back(); }
-window.addEventListener('popstate', e => {
+function show(st) { cur = st; dirty = false; window.onresize = null; document.querySelectorAll('#cover,.viewer,.dlg').forEach(x => x.remove()); screens[st.name](st.args || {}); }
+const leaveAsk = () => ask('しまわずに もどる?', 'いまの へんしゅうは きえます。', 'もどる', 'つづける', true);
+// 画面の ◀: まだしまっていない時は、先に確かめてからもどる
+async function back() {
+  if (dirty && !await leaveAsk()) return;
+  dirty = false; history.back();
+}
+// スマホの「もどる」: 履歴はもう1つ前に動いている。まだしまっていない時は確かめて、
+// 「つづける」なら1つ先(いまの画面)へもどす(画面は描き直さない)
+let skipPop = false;
+window.addEventListener('popstate', async e => {
+  if (skipPop) { skipPop = false; return; }
+  const st = e.state && e.state.name ? e.state : { name: 'shelf', args: {} };
   if (dirty) {
-    // まだしまっていない時は、いったんとどまって確かめる
-    history.pushState(cur, '');
-    ask('しまわずに もどる?', 'いまの へんしゅうは きえます。', 'もどる', 'つづける', true).then(y => { if (y) { dirty = false; history.back(); } });
-    return;
+    if (!await leaveAsk()) { skipPop = true; history.forward(); return; }
   }
-  if (e.state && e.state.name) show(e.state); else show({ name: 'shelf' });
+  show(st);
 });
 
 // ---------- ダイアログ・おしらせ
@@ -201,7 +211,8 @@ function openCover(el, book, items) {
   w.querySelector('.cv-t').animate([{ fontSize: '17px' }, { fontSize: getComputedStyle(w.querySelector('.cv-t')).fontSize }], { duration: dur, easing: ease });
   w.querySelectorAll('.cv-ph,.cv-n,.cv-x').forEach(x => x.animate([{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'none' }], { duration: dur, easing: ease }));
   let ready = false;
-  zoom.finished.then(() => { ready = true; w.classList.add('ready'); });
+  const done = () => { if (ready) return; ready = true; w.classList.add('ready'); };
+  zoom.finished.then(done, done); setTimeout(done, dur + 150); // アニメの終わりが届かない端末でも先へ進めるように
   w.querySelector('.cv-x').onclick = e => { e.stopPropagation(); se('tap'); history.back(); };
   w.onclick = async () => {
     if (!ready || w.classList.contains('flip')) return;
@@ -215,7 +226,7 @@ function openCover(el, book, items) {
     w.querySelector('.cv.top').animate(turn, { duration: fd, easing: 'cubic-bezier(.35,.1,.45,1)', fill: 'forwards' });
     w.querySelector('.cv.sheet').animate(turn, { duration: fd * .8, delay: 260 * slow, easing: 'cubic-bezier(.35,.1,.45,1)', fill: 'forwards' });
     w.querySelector('.cv.top .cv-front').animate([{ filter: 'brightness(1)' }, { filter: 'brightness(.7)' }], { duration: fd / 2, fill: 'forwards' });
-    w.animate([{ opacity: 1 }, { opacity: 1, offset: .8 }, { opacity: 0 }], { duration: fd + 260 * slow, fill: 'forwards' }).finished.then(() => w.remove());
+    w.animate([{ opacity: 1 }, { opacity: 1, offset: .8 }, { opacity: 0 }], { duration: fd + 260 * slow, fill: 'forwards' }).finished.then(() => w.remove(), () => w.remove()); setTimeout(() => w.remove(), fd + 260 * slow + 400);
   };
 }
 
@@ -248,7 +259,7 @@ screens.edit = async args => {
   if (!book) return go('shelf', {}, true);
   theme(book);
   if (item && (!draft || draft.key !== item.id)) {
-    draft = { key: item.id, blob: item.orig, look: { ...item.look }, name: item.name, memo: item.memo, stars: item.stars };
+    draft = { key: item.id, blob: imgBlob(item.orig), look: { ...item.look }, name: item.name, memo: item.memo, stars: item.stars };
   }
   const L = draft.look;
   const src = URL.createObjectURL(draft.blob);
@@ -322,13 +333,19 @@ screens.name = async args => {
     if (!name && !await ask('なまえが ないよ', 'このまま しまうと「？？？」になります。', 'しまう', 'なまえを かく')) { $('#nm').focus(); return; }
     $('#save').disabled = true;
     let it;
-    if (item) { it = { ...item, name, memo: draft.memo.trim(), stars: draft.stars, look: { ...draft.look }, thumb, updated: Date.now() }; }
-    else {
-      const no = book.next || 1;
-      it = { id: uid(), bookId: book.id, no, name, memo: draft.memo.trim(), stars: draft.stars, look: { ...draft.look }, orig: draft.blob, thumb, created: Date.now() };
-      book.next = no + 1; await DB.put('books', book);
+    try {
+      if (item) { it = { ...item, name, memo: draft.memo.trim(), stars: draft.stars, look: { ...draft.look }, thumb, updated: Date.now() }; await DB.put('items', it); }
+      else {
+        const no = book.next || 1;
+        it = { id: uid(), bookId: book.id, no, name, memo: draft.memo.trim(), stars: draft.stars, look: { ...draft.look }, orig: await packImg(draft.blob), thumb, created: Date.now() };
+        await DB.put('items', it);
+        book.next = no + 1; await DB.put('books', book);
+      }
+    } catch (e) {
+      $('#save').disabled = false;
+      toast('しまえませんでした。もういちど おしてね');
+      return;
     }
-    await DB.put('items', it);
     blobURL.delete(it.id);
     se('save'); draft = null; dirty = false;
     toast(item ? 'なおしました!' : `No.${String(it.no).padStart(3, '0')} を しまいました!`);
@@ -336,6 +353,14 @@ screens.name = async args => {
     history.go(-2); // あたらしく: 図鑑→色→なまえ / なおす: くわしく→色→なまえ
   };
 };
+
+// ---------- 写真を画面いっぱいに見る(おすと とじる)
+function viewer(src) {
+  const v = document.createElement('div'); v.className = 'viewer';
+  v.innerHTML = `<img src="${src}" alt=""><button class="vx" aria-label="とじる">✕</button>`;
+  v.onclick = () => { se('tap'); v.classList.add('out'); setTimeout(() => v.remove(), 200); };
+  document.body.appendChild(v);
+}
 
 // ---------- くわしく
 screens.detail = async ({ id }) => {
@@ -348,7 +373,7 @@ screens.detail = async ({ id }) => {
   const d = new Date(it.created);
   app.innerHTML = header(esc(book.name), backBtn, '<button class="hb" id="del" aria-label="すてる">🗑</button>') +
     `<div class="body"><div class="detail">
-      <div class="ph" style="background-image:url(${big})"></div>
+      <button class="ph zoomable" id="bigph" aria-label="おおきく みる" style="background-image:url(${big})"><span class="zm">🔍</span></button>
       <div class="no">No.${String(it.no).padStart(3, '0')}</div>
       <h2>${esc(it.name) || '？？？'}</h2>
       <div class="st">${'★'.repeat(it.stars)}<span style="color:#ccc">${'★'.repeat(5 - it.stars)}</span></div>
@@ -364,6 +389,7 @@ screens.detail = async ({ id }) => {
   let sx = null; const body = $('.body');
   body.addEventListener('touchstart', e => { sx = e.touches[0].clientX; }, { passive: true });
   body.addEventListener('touchend', e => { if (sx === null) return; const dx = e.changedTouches[0].clientX - sx; sx = null; if (Math.abs(dx) < 70) return; if (dx > 0 && i > 0) $('#prev').click(); if (dx < 0 && i < list.length - 1) $('#nxt').click(); });
+  $('#bigph').onclick = () => { se('zoom'); viewer(big); };
   $('#fix').onclick = () => { se('tap'); draft = null; go('edit', { itemId: id }); };
   $('#del').onclick = async () => {
     if (!await ask(`「${esc(it.name) || '？？？'}」を すてる?`, 'すてると もとに もどせません。', 'すてる', 'やめる', true)) return;
@@ -427,7 +453,7 @@ async function backupMenu() {
 const b2d = blob => new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(blob); });
 async function exportAll() {
   const books = await DB.all('books'), items = await DB.all('items');
-  const out = { app: 'iroiro-zukan', v: 1, books, items: await Promise.all(items.map(async it => ({ ...it, orig: await b2d(it.orig) }))) };
+  const out = { app: 'iroiro-zukan', v: 1, books, items: await Promise.all(items.map(async it => ({ ...it, orig: await b2d(imgBlob(it.orig)) }))) };
   const blob = new Blob([JSON.stringify(out)], { type: 'application/json' });
   const d = new Date(); const fn = `iroiro-zukan-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}.json`;
   const file = new File([blob], fn, { type: 'application/json' });
@@ -442,7 +468,7 @@ async function importAll(file) {
     const have = new Set((await DB.all('items')).map(x => x.id));
     let n = 0;
     for (const b of data.books) if (!await DB.get('books', b.id)) await DB.put('books', b);
-    for (const it of data.items) { if (have.has(it.id)) continue; it.orig = await (await fetch(it.orig)).blob(); await DB.put('items', it); n++; }
+    for (const it of data.items) { if (have.has(it.id)) continue; it.orig = await packImg(await (await fetch(it.orig)).blob()); await DB.put('items', it); n++; }
     for (const b of data.books) { const bb = await DB.get('books', b.id); const mx = Math.max(0, ...(await DB.itemsOf(b.id)).map(x => x.no)); if ((bb.next || 1) <= mx) { bb.next = mx + 1; await DB.put('books', bb); } }
     se('save'); toast(`${n}まい よみこみました`); show({ name: 'shelf' });
   } catch (e) { toast('よみこめませんでした'); }

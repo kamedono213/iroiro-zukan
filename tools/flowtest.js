@@ -1,6 +1,6 @@
 // 遊びの流れをはじめから最後まで通して、画面に収まるかと、エラーが出ないかを確かめる
 // node tools/flowtest.js  (先に node tools/serve.js)
-const { chromium } = require('C:/Users/user/Desktop/自作ゲーム/2_カードゲーム/DigimonCard/node_modules/playwright');
+const PW = require('C:/Users/user/Desktop/自作ゲーム/2_カードゲーム/DigimonCard/node_modules/playwright'); const chromium = PW[process.env.ENG || 'chromium'];
 const fs = require('fs'), path = require('path');
 const OUT = process.argv[2] || path.join(__dirname, 'shots');
 fs.mkdirSync(OUT, { recursive: true });
