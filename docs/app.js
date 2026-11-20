@@ -2,7 +2,7 @@
 // 写真はこのスマホの中(IndexedDB)だけに保存する。どこにも送らない。
 'use strict';
 
-const VERSION = '1.0';
+const VERSION = '1.1';
 const app = document.getElementById('app');
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -22,6 +22,23 @@ function se(kind) {
   try {
     if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
     if (ac.state === 'suspended') ac.resume();
+    if (kind === 'zoom') { // ひゅーん(上がる音)+きらっ
+      const t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain();
+      o.type = 'triangle'; o.frequency.setValueAtTime(260, t); o.frequency.exponentialRampToValueAtTime(980, t + .38);
+      g.gain.setValueAtTime(.001, t); g.gain.exponentialRampToValueAtTime(.16, t + .08); g.gain.exponentialRampToValueAtTime(.001, t + .42);
+      o.connect(g).connect(ac.destination); o.start(t); o.stop(t + .45);
+      [1568, 2093].forEach((f, i) => { const s = ac.createOscillator(), h = ac.createGain(), u = t + .36 + i * .07; s.frequency.value = f; h.gain.setValueAtTime(.09, u); h.gain.exponentialRampToValueAtTime(.001, u + .18); s.connect(h).connect(ac.destination); s.start(u); s.stop(u + .2); });
+      return;
+    }
+    if (kind === 'flip') { // ぱらっ(紙がこすれる音=ざらざらした音を、高さを動かしながら短く)
+      const t = ac.currentTime, len = .42, buf = ac.createBuffer(1, Math.floor(ac.sampleRate * len), ac.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+      const n = ac.createBufferSource(), bp = ac.createBiquadFilter(), g = ac.createGain();
+      n.buffer = buf; bp.type = 'bandpass'; bp.Q.value = 1.2; bp.frequency.setValueAtTime(900, t); bp.frequency.exponentialRampToValueAtTime(3800, t + .2); bp.frequency.exponentialRampToValueAtTime(1500, t + len);
+      g.gain.setValueAtTime(.001, t); g.gain.exponentialRampToValueAtTime(.5, t + .06); g.gain.setValueAtTime(.5, t + .16); g.gain.exponentialRampToValueAtTime(.001, t + len);
+      n.connect(bp).connect(g).connect(ac.destination); n.start(t); n.stop(t + len);
+      return;
+    }
     const seq = { tap: [[660, .05]], shutter: [[1200, .03], [500, .06]], save: [[523, .09], [659, .09], [784, .09], [1047, .18]], del: [[300, .12], [200, .15]], ok: [[784, .08], [1047, .12]] }[kind] || [[600, .05]];
     let t = ac.currentTime;
     for (const [f, d] of seq) {
@@ -105,7 +122,7 @@ function go(name, args = {}, replace = false) {
   if (replace) history.replaceState(st, ''); else history.pushState(st, '');
   show(st);
 }
-function show(st) { cur = st; dirty = false; window.onresize = null; screens[st.name](st.args || {}); }
+function show(st) { cur = st; dirty = false; window.onresize = null; const c = $('#cover'); if (c) c.remove(); screens[st.name](st.args || {}); }
 function back() { history.back(); }
 window.addEventListener('popstate', e => {
   if (dirty) {
@@ -154,10 +171,53 @@ screens.shelf = async () => {
     return `<button class="book d-${b.design}" data-id="${b.id}" style="background-color:${b.cover};color:${textOn(b.cover)}"><b>${esc(b.name)}</b>${last ? `<span class="mini" style="background-image:url(${last.thumb})"></span>` : ''}<span class="cnt">${counts[i].length} こ</span></button>`;
   }).join('')}<button class="book add" id="newBook"><span>＋</span>あたらしい${ZK}をつくる</button></div>
   <div class="note">しゃしんは このスマホの中だけに しまいます。<br>スマホをかえる時や、けしてしまわないように <button id="bk">バックアップ</button> をしておくと あんしん。<br>Ver ${VERSION}</div></div>`;
-  app.querySelectorAll('.book[data-id]').forEach(b => b.onclick = () => { se('tap'); go('book', { id: b.dataset.id }); });
+  app.querySelectorAll('.book[data-id]').forEach((el, i) => el.onclick = () => openCover(el, books[i], counts[i]));
   $('#newBook').onclick = () => { se('tap'); go('settings', { id: null }); };
   $('#bk').onclick = backupMenu;
 };
+
+// ---------- 表紙: おすと画面いっぱいにズーム → もう一度おすとページがめくれて なかみへ
+const slow = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.35 : 1;
+function openCover(el, book, items) {
+  if ($('#cover')) return;
+  se('zoom');
+  history.pushState({ name: 'shelf', args: {}, cover: book.id }, ''); // スマホの「もどる」で本だなへ
+  const from = el.getBoundingClientRect(), to = app.getBoundingClientRect();
+  const last = items[items.length - 1];
+  const w = document.createElement('div'); w.id = 'cover';
+  w.innerHTML = `<div class="cv sheet"><div class="cv-front d-${book.design}" style="background-color:${book.page}"></div><div class="cv-back" style="background-color:${book.page}"></div></div><div class="cv top"><div class="cv-front d-${book.design}" style="background-color:${book.cover};color:${textOn(book.cover)}">
+      <button class="cv-x" aria-label="もどる">◀</button>
+      <b class="cv-t">${esc(book.name)}</b>
+      <div class="cv-ph ph f-${book.frame}" style="${last ? `background-image:url(${last.thumb})` : ''}">${last ? '' : '📷'}</div>
+      <span class="cv-n">${items.length} こ あつめた</span>
+      <span class="cv-hint">タップして ひらく</span>
+    </div><div class="cv-back" style="background-color:${book.page}"></div></div>`;
+  const box = r => ({ left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+  Object.assign(w.style, box(to));
+  document.body.appendChild(w);
+  el.style.visibility = 'hidden';
+  const dur = 520 * slow, ease = 'cubic-bezier(.2,.85,.25,1)';
+  const zoom = w.animate([{ ...box(from), borderRadius: '6px 14px 14px 6px' }, { ...box(to), borderRadius: '0px' }], { duration: dur, easing: ease });
+  w.querySelector('.cv-t').animate([{ fontSize: '17px' }, { fontSize: getComputedStyle(w.querySelector('.cv-t')).fontSize }], { duration: dur, easing: ease });
+  w.querySelectorAll('.cv-ph,.cv-n,.cv-x').forEach(x => x.animate([{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'none' }], { duration: dur, easing: ease }));
+  let ready = false;
+  zoom.finished.then(() => { ready = true; w.classList.add('ready'); });
+  w.querySelector('.cv-x').onclick = e => { e.stopPropagation(); se('tap'); history.back(); };
+  w.onclick = async () => {
+    if (!ready || w.classList.contains('flip')) return;
+    w.classList.add('flip'); se('flip'); setTimeout(() => se('flip'), 260 * slow);
+    // 下に なかみの画面を用意してから、表紙をめくる
+    cur = { name: 'book', args: { id: book.id } }; dirty = false; window.onresize = null;
+    history.replaceState(cur, '');
+    await screens.book({ id: book.id });
+    const fd = 900 * slow, turn = [{ transform: 'rotateY(0deg)' }, { transform: 'rotateY(-100deg)', offset: .7 }, { transform: 'rotateY(-180deg)' }];
+    // 表紙のあとに、1まい目のページも少しおくれて めくれる
+    w.querySelector('.cv.top').animate(turn, { duration: fd, easing: 'cubic-bezier(.35,.1,.45,1)', fill: 'forwards' });
+    w.querySelector('.cv.sheet').animate(turn, { duration: fd * .8, delay: 260 * slow, easing: 'cubic-bezier(.35,.1,.45,1)', fill: 'forwards' });
+    w.querySelector('.cv.top .cv-front').animate([{ filter: 'brightness(1)' }, { filter: 'brightness(.7)' }], { duration: fd / 2, fill: 'forwards' });
+    w.animate([{ opacity: 1 }, { opacity: 1, offset: .8 }, { opacity: 0 }], { duration: fd + 260 * slow, fill: 'forwards' }).finished.then(() => w.remove());
+  };
+}
 
 // ---------- 図鑑のなかみ
 screens.book = async ({ id }) => {

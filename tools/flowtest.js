@@ -20,9 +20,12 @@ const SIZES = [['se2', 375, 553], ['sense9', 412, 760], ['big', 430, 740]];
     await p.goto('' + (process.env.URL || 'http://localhost:8137/') + '');
     await p.waitForSelector('.book[data-id]');
     const shot = async t => { await p.waitForTimeout(250); await p.screenshot({ path: path.join(OUT, `${nm}-${t}.png`) }); };
-    const fits = async t => { const r = await p.evaluate(() => { const o = []; document.querySelectorAll('.foot,.hd,.tools,.stage').forEach(e => { const b = e.getBoundingClientRect(); o.push([e.className, Math.round(b.top), Math.round(b.bottom)]); }); return { h: innerHeight, sh: document.documentElement.scrollHeight, o }; }); const bad = r.o.filter(x => x[2] > r.h + 1); if (bad.length || r.sh > r.h + 1) errs.push(`${nm} ${t}: はみ出し ${JSON.stringify(r)}`); return r; };
+    const fits = async t => { const r = await p.evaluate(() => { const o = []; document.querySelectorAll('.foot,.hd,.tools,.stage,.cv-hint,.cv-n').forEach(e => { const b = e.getBoundingClientRect(); o.push([e.className, Math.round(b.top), Math.round(b.bottom)]); }); return { h: innerHeight, sh: document.documentElement.scrollHeight, o }; }); const bad = r.o.filter(x => x[2] > r.h + 1); if (bad.length || r.sh > r.h + 1) errs.push(`${nm} ${t}: はみ出し ${JSON.stringify(r)}`); return r; };
     await shot('1shelf'); await fits('shelf');
-    await p.click('.book[data-id]'); await p.waitForSelector('#cam');
+    await p.click('.book[data-id]'); await p.waitForSelector('#cover.ready'); await shot('1b-cover'); await fits('cover');
+    await p.click('.cv-x'); await p.waitForSelector('#cover', { state: 'detached' }); if (!await p.$('.book[data-id]')) errs.push(nm + ': 表紙からもどれない');
+    await p.click('.book[data-id]'); await p.waitForSelector('#cover.ready'); await p.goBack(); await p.waitForSelector('#cover', { state: 'detached' });
+    await p.click('.book[data-id]'); await p.waitForSelector('#cover.ready'); await p.click('#cover'); await p.waitForSelector('#cam'); await p.waitForSelector('#cover', { state: 'detached' });
     await shot('2book-empty'); await fits('book');
     // 写真をえらぶ ×3
     for (let k = 0; k < 3; k++) {
@@ -70,7 +73,7 @@ const SIZES = [['se2', 375, 553], ['sense9', 412, 760], ['big', 430, 740]];
     await p.click('#ok'); await p.waitForSelector('#cam'); await shot('10book-themed');
     const t = await p.$eval('.hd h1', e => e.textContent); if (t !== 'いきもの図鑑') errs.push(nm + ': なまえ ' + t);
     // 本だなへ・新しい図鑑
-    await p.click('#back'); await p.waitForSelector('#newBook'); await p.click('#newBook'); await p.waitForSelector('#bn');
+    await p.click('#back'); await p.waitForSelector('#newBook'); await p.waitForTimeout(300); await p.click('#newBook'); await p.waitForSelector('#bn');
     await p.fill('#bn', 'おもちゃ図鑑'); await p.click('#ok'); await p.waitForSelector('#cam');
     await p.click('#back'); await p.waitForSelector('#newBook'); await shot('11shelf2');
     const bc = await p.$$eval('.book[data-id]', e => e.length); if (bc !== 2) errs.push(nm + ': 本が' + bc);
