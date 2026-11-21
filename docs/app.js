@@ -2,7 +2,7 @@
 // 写真はこのスマホの中(IndexedDB)だけに保存する。どこにも送らない。
 'use strict';
 
-const VERSION = '1.2';
+const VERSION = '1.3';
 const app = document.getElementById('app');
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -180,10 +180,12 @@ screens.shelf = async () => {
     const last = counts[i][counts[i].length - 1];
     return `<button class="book d-${b.design}" data-id="${b.id}" style="background-color:${b.cover};color:${textOn(b.cover)}"><b>${esc(b.name)}</b>${last ? `<span class="mini" style="background-image:url(${last.thumb})"></span>` : ''}<span class="cnt">${counts[i].length} こ</span></button>`;
   }).join('')}<button class="book add" id="newBook"><span>＋</span>あたらしい${ZK}をつくる</button></div>
-  <div class="note">しゃしんは このスマホの中だけに しまいます。<br>スマホをかえる時や、けしてしまわないように <button id="bk">バックアップ</button> をしておくと あんしん。<br>Ver ${VERSION}</div></div>`;
+  <div class="saveload"><button id="bSave">💾 セーブ</button><button id="bLoad">📂 ロード</button></div>
+  <div class="note">しゃしんは このスマホの中だけに しまいます。<br>セーブすると、${ZK}が まるごと 1つの ファイルに なります。ロードで そのファイルを えらぶと、いまの ${ZK}に たされます。<br>Ver ${VERSION}</div></div>`;
   app.querySelectorAll('.book[data-id]').forEach((el, i) => el.onclick = () => openCover(el, books[i], counts[i]));
   $('#newBook').onclick = () => { se('tap'); go('settings', { id: null }); };
-  $('#bk').onclick = backupMenu;
+  $('#bSave').onclick = () => { se('tap'); exportAll(); };
+  $('#bLoad').onclick = () => { se('tap'); const f = $('#fBackup'); f.value = ''; f.onchange = () => f.files[0] && importAll(f.files[0]); f.click(); };
 };
 
 // ---------- 表紙: おすと画面いっぱいにズーム → もう一度おすとページがめくれて なかみへ
@@ -439,17 +441,7 @@ screens.settings = async ({ id }) => {
   render();
 };
 
-// ---------- バックアップ(ファイルに書き出す/読みこむ)
-async function backupMenu() {
-  const d = document.createElement('div'); d.className = 'dlg';
-  d.innerHTML = `<div><b>バックアップ</b><p>${ZK}を まるごと 1つの ファイルに します。<br>よみこむと、いまの ${ZK}に たされます。</p><div class="row"><button data-a="out" class="y">かきだす</button><button data-a="in">よみこむ</button></div><button data-a="x" style="padding:10px;font-weight:800">とじる</button></div>`;
-  document.body.appendChild(d);
-  d.onclick = async e => {
-    const a = e.target.closest('[data-a]'); if (!a && e.target !== d) return; d.remove(); if (!a) return;
-    if (a.dataset.a === 'out') await exportAll();
-    if (a.dataset.a === 'in') { const f = $('#fBackup'); f.value = ''; f.onchange = () => f.files[0] && importAll(f.files[0]); f.click(); }
-  };
-}
+// ---------- セーブ(ファイルに書き出す)/ロード(読みこむ)
 const b2d = blob => new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(blob); });
 async function exportAll() {
   const books = await DB.all('books'), items = await DB.all('items');
@@ -459,7 +451,7 @@ async function exportAll() {
   const file = new File([blob], fn, { type: 'application/json' });
   if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file] }); return; } catch (e) { if (e.name === 'AbortError') return; } }
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = fn; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  toast('かきだしました');
+  toast('セーブしました');
 }
 async function importAll(file) {
   try {
@@ -470,8 +462,8 @@ async function importAll(file) {
     for (const b of data.books) if (!await DB.get('books', b.id)) await DB.put('books', b);
     for (const it of data.items) { if (have.has(it.id)) continue; it.orig = await packImg(await (await fetch(it.orig)).blob()); await DB.put('items', it); n++; }
     for (const b of data.books) { const bb = await DB.get('books', b.id); const mx = Math.max(0, ...(await DB.itemsOf(b.id)).map(x => x.no)); if ((bb.next || 1) <= mx) { bb.next = mx + 1; await DB.put('books', bb); } }
-    se('save'); toast(`${n}まい よみこみました`); show({ name: 'shelf' });
-  } catch (e) { toast('よみこめませんでした'); }
+    se('save'); toast(`${n}まい ロードしました`); show({ name: 'shelf' });
+  } catch (e) { toast('ロードできませんでした'); }
 }
 
 // ---------- はじまり

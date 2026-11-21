@@ -72,7 +72,7 @@ const URL = process.env.URL || 'http://localhost:8137/';
     await tap('#back', '図鑑→もどる'); await expect('#newBook', '本だなへ');
     await tap('#newBook', 'あたらしい図鑑'); await expect('#bn', '新しい図鑑画面');
     await tap('#back', '新しい図鑑→もどる'); await expect('#newBook', '本だなへ2');
-    await tap('#bk', 'バックアップ'); await expect('.dlg', 'バックアップ画面'); await tap('.dlg [data-a="x"]', 'とじる');
+    await tap('#bSave', 'セーブ'); await tap('#bLoad', 'ロード');
     await b.close();
   }
   console.log(errs.length ? errs.join('\n') : 'ALL OK');

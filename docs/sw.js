@@ -1,5 +1,5 @@
 // いろいろ図鑑のサービスワーカー: ネットがあれば新しいものを、なければしまってあるものを使う
-const CACHE = 'iroiro-4';
+const CACHE = 'iroiro-5';
 const FILES = ['./', 'index.html', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/apple-touch-icon.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => Promise.all(FILES.map(u => fetch(new Request(u, { cache: 'reload' })).then(r => r.ok && c.put(u, r))))).then(() => self.skipWaiting()));
