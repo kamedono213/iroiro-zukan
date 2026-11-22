@@ -2,7 +2,7 @@
 // 写真はこのスマホの中(IndexedDB)だけに保存する。どこにも送らない。
 'use strict';
 
-const VERSION = '1.4';
+const VERSION = '1.5';
 // 表紙の写真: きめた1まい(coverId)、なければ No.1(いちばん さいしょ)
 const coverOf = (book, items) => items.find(x => x.id === book.coverId) || items[0];
 // 画面を ゆびで ひろげたり、ずらしたり しないように(iPhone は viewport の指定を むしするので)
@@ -412,6 +412,7 @@ screens.detail = async ({ id }) => {
 // ---------- 図鑑のせってい(なまえ・色・もよう・わく)
 screens.settings = async ({ id }) => {
   const old = id ? await DB.get('books', id) : null;
+  const its = old ? await DB.itemsOf(old.id) : [];
   const b = old ? { ...old } : { id: uid(), name: '', cover: PALETTE[Math.floor(Math.random() * 10)], page: '#ffffff', design: 'plain', frame: 'round', created: Date.now(), next: 1 };
   const render = () => {
     theme(b);
@@ -419,6 +420,7 @@ screens.settings = async ({ id }) => {
       `<div class="body"><div class="form">
         <label class="fl">${ZK}の なまえ<input class="in" id="bn" maxlength="20" placeholder="れい: いきもの${ZK}" value="${esc(b.name)}"></label>
         <div class="fl">ひょうしの いろ<div class="pal" data-k="cover">${PALETTE.map(c => `<button class="sw${b.cover === c ? ' on' : ''}" data-c="${c}" style="background:${c}"></button>`).join('')}<label class="sw pick${!PALETTE.includes(b.cover) ? ' on' : ''}"><input type="color" data-k="cover" value="${b.cover}"></label></div></div>
+        ${its.length ? `<div class="fl">ひょうしの しゃしん<div class="pal cvpick">${its.map(it => `<button class="cvp${coverOf(b, its).id === it.id ? ' on' : ''}" data-i="${it.id}" style="background-image:url(${it.thumb})"><span>${it.no}</span></button>`).join('')}</div></div>` : ''}
         <div class="fl">ページの いろ<div class="pal" data-k="page">${PAGE_COLORS.map(c => `<button class="sw${b.page === c ? ' on' : ''}" data-c="${c}" style="background:${c}"></button>`).join('')}<label class="sw pick${!PAGE_COLORS.includes(b.page) ? ' on' : ''}"><input type="color" data-k="page" value="${b.page}"></label></div></div>
         <div class="fl">ページの もよう<div class="opts" data-k="design">${DESIGNS.map(([k, t]) => `<button class="opt${b.design === k ? ' on' : ''}" data-v="${k}"><span class="smp d-${k}" style="background-color:${b.page}"></span>${t}</button>`).join('')}</div></div>
         <div class="fl">しゃしんの わく<div class="opts" data-k="frame">${FRAMES.map(([k, t]) => `<button class="opt${b.frame === k ? ' on' : ''}" data-v="${k}"><span class="smp ph f-${k}" style="background:${b.cover};border:0"></span>${t}</button>`).join('')}</div></div>
@@ -430,6 +432,7 @@ screens.settings = async ({ id }) => {
       p.onclick = e => { const s = e.target.closest('.sw[data-c]'); if (!s) return; se('tap'); b[p.dataset.k] = s.dataset.c; dirty = true; render(); };
       p.onchange = e => { if (e.target.type !== 'color') return; b[p.dataset.k] = e.target.value; dirty = true; render(); };
     });
+    app.querySelectorAll('.cvp').forEach(x => x.onclick = () => { se('tap'); b.coverId = x.dataset.i; dirty = true; render(); });
     app.querySelectorAll('.opts').forEach(p => p.onclick = e => { const o = e.target.closest('.opt'); if (!o) return; se('tap'); b[p.dataset.k] = o.dataset.v; dirty = true; render(); });
     $('#back').onclick = back;
     $('#ok').onclick = async () => {

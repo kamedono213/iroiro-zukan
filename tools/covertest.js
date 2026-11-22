@@ -33,6 +33,10 @@ const URL = process.env.URL || 'http://localhost:8137/';
     if (!(await mini()).includes(blue)) errs.push(eng + ' えらんだ写真が表紙にならない');
     await p.tap('.book[data-id]'); await p.waitForSelector('#cover.ready');
     const cph = await p.$eval('.cv-ph', e => e.style.backgroundImage); if (!cph.includes(blue)) errs.push(eng + ' ズームした表紙がちがう');
+    // せってい画面でも No.2 にかえられる
+    await p.evaluate(async () => go('settings', { id: (await DB.all('books'))[0].id })); await p.waitForSelector('.cvp');
+    await p.tap('.cvp[data-i=it2]'); await p.screenshot({ path: 'tools/_set_' + eng + '.png' }); await p.tap('#ok'); await p.waitForTimeout(600);
+    if ((await p.evaluate(async () => (await DB.all('books'))[0].coverId)) !== 'it2') errs.push(eng + ' せっていで ひょうしが かわらない');
     // 左右にずれないか
     await p.evaluate(() => go('settings', { id: null })); await p.waitForTimeout(500);
     const sc = await p.evaluate(() => { window.scrollTo(200, 0); document.body.scrollLeft = 200; return [window.scrollX, document.documentElement.scrollWidth, innerWidth, document.body.scrollLeft]; });
