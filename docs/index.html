@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>いろいろ図鑑</title>
 <meta name="theme-color" content="#3a7bd5">
 <link rel="manifest" href="manifest.webmanifest">
@@ -10,7 +10,11 @@
 <link rel="icon" href="icons/icon-192.png">
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;height:100%;overscroll-behavior:none}
+html,body{margin:0;height:100%;overscroll-behavior:none;overflow:hidden;width:100%;touch-action:pan-y}
+body{position:fixed;inset:0}
+.pal,.opts{touch-action:pan-x pan-y}
+.cvbtn{padding:8px 10px;border-radius:12px;background:rgba(255,255,255,.88);font-weight:800;font-size:14px}
+.cvbtn.on{opacity:.55}
 body{font-family:"Hiragino Maru Gothic ProN","BIZ UDPGothic","Meiryo",system-ui,sans-serif;background:#eef2f7;color:#222;font-size:16px}
 button{font:inherit;color:inherit;cursor:pointer;border:0;background:none;touch-action:manipulation}
 input,textarea{font:inherit}

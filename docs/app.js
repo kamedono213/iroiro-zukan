@@ -2,7 +2,12 @@
 // 写真はこのスマホの中(IndexedDB)だけに保存する。どこにも送らない。
 'use strict';
 
-const VERSION = '1.3';
+const VERSION = '1.4';
+// 表紙の写真: きめた1まい(coverId)、なければ No.1(いちばん さいしょ)
+const coverOf = (book, items) => items.find(x => x.id === book.coverId) || items[0];
+// 画面を ゆびで ひろげたり、ずらしたり しないように(iPhone は viewport の指定を むしするので)
+['gesturestart', 'gesturechange'].forEach(t => document.addEventListener(t, e => e.preventDefault()));
+document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 const app = document.getElementById('app');
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -177,7 +182,7 @@ screens.shelf = async () => {
   }
   const counts = await Promise.all(books.map(b => DB.itemsOf(b.id)));
   app.innerHTML = header(`いろいろ${ZK}`) + `<div class="body"><div class="shelf">${books.map((b, i) => {
-    const last = counts[i][counts[i].length - 1];
+    const last = coverOf(b, counts[i]);
     return `<button class="book d-${b.design}" data-id="${b.id}" style="background-color:${b.cover};color:${textOn(b.cover)}"><b>${esc(b.name)}</b>${last ? `<span class="mini" style="background-image:url(${last.thumb})"></span>` : ''}<span class="cnt">${counts[i].length} こ</span></button>`;
   }).join('')}<button class="book add" id="newBook"><span>＋</span>あたらしい${ZK}をつくる</button></div>
   <div class="saveload"><button id="bSave">💾 セーブ</button><button id="bLoad">📂 ロード</button></div>
@@ -195,7 +200,7 @@ function openCover(el, book, items) {
   se('zoom');
   history.pushState({ name: 'shelf', args: {}, cover: book.id }, ''); // スマホの「もどる」で本だなへ
   const from = el.getBoundingClientRect(), to = app.getBoundingClientRect();
-  const last = items[items.length - 1];
+  const last = coverOf(book, items);
   const w = document.createElement('div'); w.id = 'cover';
   w.innerHTML = `<div class="cv sheet"><div class="cv-front d-${book.design}" style="background-color:${book.page}"></div><div class="cv-back" style="background-color:${book.page}"></div></div><div class="cv top"><div class="cv-front d-${book.design}" style="background-color:${book.cover};color:${textOn(book.cover)}">
       <button class="cv-x" aria-label="もどる">◀</button>
@@ -381,7 +386,7 @@ screens.detail = async ({ id }) => {
       <div class="st">${'★'.repeat(it.stars)}<span style="color:#ccc">${'★'.repeat(5 - it.stars)}</span></div>
       <div class="memo">${esc(it.memo) || '<span style="color:#99a">(せつめいは まだ ありません)</span>'}</div>
       <div class="dt">${d.getFullYear()}ねん ${d.getMonth() + 1}がつ ${d.getDate()}にち に しまった</div>
-      <div class="nav"><button id="prev" ${i <= 0 ? 'disabled' : ''}>◀ まえ</button><button id="nxt" ${i >= list.length - 1 ? 'disabled' : ''}>つぎ ▶</button></div>
+      <div class="nav"><button id="prev" ${i <= 0 ? 'disabled' : ''}>◀ まえ</button><button class="cvbtn${coverOf(book, list).id === id ? ' on' : ''}" id="toCover">${coverOf(book, list).id === id ? '📕 いまの ひょうし' : '📕 ひょうしに する'}</button><button id="nxt" ${i >= list.length - 1 ? 'disabled' : ''}>つぎ ▶</button></div>
     </div></div>
     <div class="foot"><button class="big" id="fix">✏ なおす</button></div>`;
   $('#back').onclick = back;
@@ -392,6 +397,11 @@ screens.detail = async ({ id }) => {
   body.addEventListener('touchstart', e => { sx = e.touches[0].clientX; }, { passive: true });
   body.addEventListener('touchend', e => { if (sx === null) return; const dx = e.changedTouches[0].clientX - sx; sx = null; if (Math.abs(dx) < 70) return; if (dx > 0 && i > 0) $('#prev').click(); if (dx < 0 && i < list.length - 1) $('#nxt').click(); });
   $('#bigph').onclick = () => { se('zoom'); viewer(big); };
+  $('#toCover').onclick = async () => {
+    if (coverOf(book, list).id === id) return;
+    book.coverId = id; await DB.put('books', book); se('ok'); toast('ひょうしに しました!');
+    const c = $('#toCover'); c.classList.add('on'); c.textContent = '📕 いまの ひょうし';
+  };
   $('#fix').onclick = () => { se('tap'); draft = null; go('edit', { itemId: id }); };
   $('#del').onclick = async () => {
     if (!await ask(`「${esc(it.name) || '？？？'}」を すてる?`, 'すてると もとに もどせません。', 'すてる', 'やめる', true)) return;
